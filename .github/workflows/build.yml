@@ -9,7 +9,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install only essential packages
+    - name: Install essential packages
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -20,8 +20,10 @@ jobs:
           git \
           zlib1g-dev
 
-    - name: Install Buildozer
-      run: pip install buildozer
+    - name: Install Python build dependencies
+      run: |
+        pip install --upgrade pip
+        pip install cython buildozer  # Added cython here!
 
     - name: Build APK
       run: |
