@@ -4,73 +4,21 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45  # Add timeout to prevent hanging
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install essential packages
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          python3-pip \
-          openjdk-17-jdk \
-          zip \
-          unzip \
-          git \
-          zlib1g-dev
-
-    - name: Install Python dependencies
-      run: |
-        pip install --upgrade pip
-        pip install cython buildozer
-
-    - name: Configure Android SDK to use newer build-tools
-      run: |
-        # Initialize buildozer
-        buildozer init || true
-        
-        # Force newer Android build-tools version
-        sed -i 's/#android.build_tools_version = /android.build_tools_version = 34.0.0/' buildozer.spec
-        sed -i 's/android.api = 28/android.api = 33/' buildozer.spec
-        sed -i 's/android.minapi = 21/android.minapi = 21/' buildozer.spec
-        
-        # Show the updated config
-        grep -E "(android.api|android.minapi|android.build_tools_version)" buildozer.spec
-
-    - name: Accept all Android licenses automatically
-      run: |
-        mkdir -p ~/.android
-        # Pre-accept all common licenses
-        yes | ${ANDROID_HOME}/tools/bin/sdkmanager --licenses 2>/dev/null || true
-        echo "Licenses pre-accepted"
-
-    - name: Build APK with robust yes handling
-      run: |
-        # Build with auto-accept for any remaining licenses - robust version
-        (yes 2>/dev/null | buildozer -v android debug) || (echo "yes command completed"; buildozer -v android debug)
-
-    - name: Check if APK was created
-      run: |
-        if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK built successfully!"
-          echo "APK_EXISTS=true" >> $GITHUB_ENV
-        else
-          echo "❌ No APK found after build"
-          echo "APK_EXISTS=false" >> $GITHUB_ENV
-        fi
+    - name: Build APK with specialized action
+      uses: ArtemSBulgakov/buildozer-action@v1
+      with:
+        workdir: .
+        buildozer_version: latest
+        target: android
+        buildozer_args: debug
 
     - name: Upload APK
-      if: env.APK_EXISTS == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: baurik-app
         path: bin/*.apk
-
-    - name: Show build results
-      run: |
-        echo "Build directory contents:"
-        ls -la bin/ 2>/dev/null || echo "No bin directory found"
-        echo "Final check for APK:"
-        find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
