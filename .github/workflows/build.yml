@@ -4,19 +4,22 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
 
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup environment
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
       run: |
-        sudo apt update
-        sudo apt install -y python3-pip openjdk-17-jdk
+        sudo apt-get update
+        sudo apt-get install -y python3-pip openjdk-17-jdk
         pip install cython buildozer
 
-    - name: Create minimal buildozer.spec
+    - name: Configure buildozer with modern settings
       run: |
-        echo '[app]
+        cat > buildozer.spec << 'EOL'
+[app]
 title = Baurik Cleaning Solutions
 package.name = baurikcleaning
 package.domain = com.baurik
@@ -27,25 +30,46 @@ requirements = python3,kivy
 orientation = portrait
 android.permissions = INTERNET
 android.api = 33
-android.minapi = 21' > buildozer.spec
+android.minapi = 21
+android.build_tools_version = 34.0.0
+log_level = 2
+EOL
 
-    - name: Build with debug logging
+    - name: Build APK with detailed logging
       run: |
-        # Build with explicit yes and save log
-        buildozer -v android debug > build.log 2>&1 || true
+        timeout 50m buildozer -v android debug 2>&1 | tee build.log || echo "Build completed or timed out"
         
-        # Check if APK was created despite exit code
-        if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK built successfully!"
+        if [ -f bin/*.apk ]; then
+          echo "APK was created successfully!"
           exit 0
         else
-          echo "❌ Build failed. Last errors:"
-          tail -30 build.log
+          echo "Build failed. Showing last 50 lines of log:"
+          tail -50 build.log
           exit 1
         fi
 
-    - name: Upload APK
+    - name: Check for APK file
+      run: |
+        echo "Checking for APK files..."
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "APK found:"
+          ls -la bin/
+          echo "APK_BUILT=true" >> $GITHUB_ENV
+        else
+          echo "No APK found."
+          echo "APK_BUILT=false" >> $GITHUB_ENV
+        fi
+
+    - name: Upload APK if exists
+      if: env.APK_BUILT == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: baurik-app
         path: bin/*.apk
+
+    - name: Upload build log for debugging
+      if: env.APK_BUILT == 'false'
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
