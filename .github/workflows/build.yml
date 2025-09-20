@@ -9,7 +9,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
@@ -31,18 +31,41 @@ jobs:
           libtinfo5 \
           cmake \
           libffi-dev \
-          libssl-dev
+          libssl-dev \
+          build-essential \
+          python3-venv
 
-    - name: Install Buildozer
-      run: pip install buildozer
-
-    - name: Build APK with Buildozer
+    - name: Install Buildozer and dependencies
       run: |
-        buildozer android debug
-        echo "Build completed, checking for APK..."
-        ls -la bin/
+        python -m pip install --upgrade pip
+        pip install buildozer cython virtualenv
+
+    - name: Set up Buildozer environment
+      run: |
+        buildozer init
+        # Update buildozer.spec with correct settings
+        sed -i 's/requirements = python3,kivy/requirements = python3,kivy/g' buildozer.spec
+        sed -i 's/android.api = 30/android.api = 28/g' buildozer.spec
+        sed -i 's/android.minapi = 21/android.minapi = 21/g' buildozer.spec
+        sed -i 's/android.ndk = .*/#android.ndk = /g' buildozer.spec
+
+    - name: Build APK (with timeout)
+      run: |
+        timeout 45m buildozer -v android debug || echo "Build completed or timed out"
+        
+    - name: Check for APK file
+      run: |
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "APK found successfully!"
+          ls -la bin/
+        else
+          echo "No APK found, checking error logs..."
+          find . -name "*.log" -exec echo "=== {} ===" \; -exec cat {} \;
+          exit 1
+        fi
 
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: baurik-cleaning-app
